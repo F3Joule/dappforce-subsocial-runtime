@@ -240,7 +240,6 @@ impl blogs::Trait for Runtime {
 
 impl wallet::Trait for Runtime {
 	type Event = Event;
-	type Currency = balances::Module<Self>;
 	type TransactionId = u64;
 }
 

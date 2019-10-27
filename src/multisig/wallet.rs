@@ -4,8 +4,9 @@ use parity_codec::{Encode, Decode};
 use runtime_primitives::traits::{As, Member, SimpleArithmetic};
 use rstd::collections::btree_map::BTreeMap;
 // use primitives::{sr25519, crypto::Pair};
-use {balances, timestamp};
+use {timestamp};
 use system::{self, ensure_signed};
+use crate::currency::{BalanceOf, GovernanceCurrency};
 
 pub const MIN_MULTISIG_WALLET_OWNERS: u16 = 2;
 pub const MAX_MULTISIG_WALLET_OWNERS: u16 = 16;
@@ -38,7 +39,7 @@ pub struct Wallet<T: Trait> {
 	pub created: Change<T>,
 	pub id: T::AccountId,
 	pub owners: Vec<T::AccountId>,
-	pub max_tx_value: CurrencyBalance<T>,
+	pub max_tx_value: BalanceOf<T>,
 	pub confirms_required: u16,
 }
 
@@ -47,18 +48,14 @@ pub struct Transaction<T: Trait> {
 	pub created: Change<T>,
 	pub id: T::TransactionId,
 	pub destination: T::AccountId,
-	pub value: CurrencyBalance<T>,
+	pub value: BalanceOf<T>,
 	pub notes: Vec<u8>,
 	pub confirmed_by: Vec<T::AccountId>,
 	pub executed: bool,
 }
 
-type CurrencyBalance<T> =
-	<<T as Trait>::Currency as Currency<<T as system::Trait>::AccountId>>::Balance;
-
-pub trait Trait: system::Trait + balances::Trait + timestamp::Trait {
+pub trait Trait: system::Trait + timestamp::Trait + GovernanceCurrency {
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
-	type Currency: Currency<Self::AccountId>;
 	type TransactionId: Parameter + Member + SimpleArithmetic + Default + Copy + As<usize>;
 }
 
@@ -83,7 +80,7 @@ decl_module! {
 		fn deposit_event<T>() = default;
 
 		pub fn create_wallet(origin, wallet_id: T::AccountId, owners: Vec<T::AccountId>,
-			max_tx_value: CurrencyBalance<T>, confirms_required: u16) -> Result
+			max_tx_value: BalanceOf<T>, confirms_required: u16) -> Result
 		{
 			let creator = ensure_signed(origin)?;
 			let mut owners_map: BTreeMap<T::AccountId, bool> = BTreeMap::new();
@@ -125,7 +122,7 @@ decl_module! {
 		}
 
 		pub fn submit_transaction(origin, wallet_id: T::AccountId, destination: T::AccountId,
-			value: CurrencyBalance<T>, notes: Vec<u8>) -> Result
+			value: BalanceOf<T>, notes: Vec<u8>) -> Result
 		{
 			let sender = ensure_signed(origin)?;
 
