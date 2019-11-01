@@ -1,7 +1,8 @@
 use rstd::prelude::*;
 use srml_support::{decl_module, decl_storage, decl_event, StorageValue, StorageMap, ensure, dispatch::Result, Parameter, traits::Currency};
-use parity_codec::{Encode, Decode};
-use runtime_primitives::traits::{As, Member, SimpleArithmetic};
+use parity_codec::Codec;
+use parity_codec_derive::{Encode, Decode};
+use runtime_primitives::traits::{As, Member, SimpleArithmetic, MaybeSerializeDebug};
 use rstd::collections::btree_map::BTreeMap;
 // use primitives::{sr25519, crypto::Pair};
 use {timestamp};
@@ -56,7 +57,8 @@ pub struct Transaction<T: Trait> {
 
 pub trait Trait: system::Trait + timestamp::Trait + GovernanceCurrency {
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
-	type TransactionId: Parameter + Member + SimpleArithmetic + Default + Copy + As<usize>;
+	type TransactionId: Parameter + Member + SimpleArithmetic + Codec + Default + Copy
+    + As<usize> + As<u64> + MaybeSerializeDebug + PartialEq;
 }
 
 decl_storage! {
