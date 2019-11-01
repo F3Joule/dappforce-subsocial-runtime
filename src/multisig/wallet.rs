@@ -2,7 +2,7 @@ use rstd::prelude::*;
 use srml_support::{decl_module, decl_storage, decl_event, StorageValue, StorageMap, ensure, dispatch::Result, Parameter, traits::Currency};
 use parity_codec::Codec;
 use parity_codec_derive::{Encode, Decode};
-use runtime_primitives::traits::{As, Member, SimpleArithmetic, MaybeSerializeDebug};
+use runtime_primitives::traits::{As, Member, SimpleArithmetic, MaybeDebug, MaybeSerializeDebug};
 use rstd::collections::btree_map::BTreeMap;
 // use primitives::{sr25519, crypto::Pair};
 use {timestamp};
@@ -28,6 +28,7 @@ pub const MSG_NOT_ENOUGH_CONFIRMS_ON_TX: &str = "There are not enough confirmati
 pub const MSG_FREE_BALANCE_TOO_LOW: &str = "Wallet's free balance is lower than a transaction value";
 pub const MSG_TX_ALREADY_EXECUTED: &str = "Transaction is already executed";
 
+#[cfg_attr(feature = "std", derive(Debug))]
 #[derive(Clone, Encode, Decode)]
 pub struct Change<T: Trait> {
 	pub account: T::AccountId,
@@ -35,6 +36,7 @@ pub struct Change<T: Trait> {
 	time: T::Moment,
 }
 
+#[cfg_attr(feature = "std", derive(Debug))]
 #[derive(Clone, Encode, Decode)]
 pub struct Wallet<T: Trait> {
 	pub created: Change<T>,
@@ -44,6 +46,7 @@ pub struct Wallet<T: Trait> {
 	pub confirms_required: u16,
 }
 
+#[cfg_attr(feature = "std", derive(Debug))]
 #[derive(Clone, Encode, Decode)]
 pub struct Transaction<T: Trait> {
 	pub created: Change<T>,
@@ -55,7 +58,7 @@ pub struct Transaction<T: Trait> {
 	pub executed: bool,
 }
 
-pub trait Trait: system::Trait + timestamp::Trait + GovernanceCurrency {
+pub trait Trait: system::Trait + timestamp::Trait + GovernanceCurrency + MaybeDebug {
 	type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 	type TransactionId: Parameter + Member + SimpleArithmetic + Codec + Default + Copy
     + As<usize> + As<u64> + MaybeSerializeDebug + PartialEq;
