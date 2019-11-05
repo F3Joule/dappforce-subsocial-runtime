@@ -1,7 +1,8 @@
 #![cfg(test)]
 
-pub use super::multisigwallet;
-pub use support::traits::Currency;
+pub use super::wallet;
+pub use crate::currency;
+pub use srml_support::traits::Currency;
 pub use system;
 
 pub use primitives::{H256, Blake2Hasher};
@@ -11,7 +12,7 @@ pub use runtime_primitives::{
   testing::{Digest, DigestItem, Header}
 };
 
-use support::impl_outer_origin;
+use srml_support::impl_outer_origin;
 
 impl_outer_origin! {
   pub enum Origin for Test {}
@@ -19,9 +20,9 @@ impl_outer_origin! {
 
 pub type AccountId = u64;
 pub type TransactionId = u64;
-pub type CurrencyBalance = u32;
+pub type BalanceOf = u32;
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq, PartialEq, Debug)]
 pub struct Test;
 impl system::Trait for Test {
   type Origin = Origin;
@@ -52,13 +53,16 @@ impl balances::Trait for Test {
     type TransferPayment = ();
 }
 
-impl multisigwallet::Trait for Test {
+impl wallet::Trait for Test {
   type Event = ();
   type TransactionId = u64;
+}
+
+impl currency::GovernanceCurrency for Test {
   type Currency = balances::Module<Self>;
 }
 
-pub type MultisigWallet = multisigwallet::Module<Test>;
+pub type MultisigWallet = wallet::Module<Test>;
 pub type Balances = balances::Module<Test>;
 
 pub fn test_ext() -> runtime_io::TestExternalities<Blake2Hasher> {
