@@ -9,9 +9,9 @@ use {timestamp};
 use system::{self, ensure_signed};
 use crate::currency::{BalanceOf, GovernanceCurrency};
 
-pub const MIN_MULTISIG_WALLET_MAX_TX_VALUE: u16 = 1;
-pub const MIN_MULTISIG_WALLET_OWNERS: u16 = 2;
-pub const MAX_MULTISIG_WALLET_OWNERS: u16 = 16;
+pub const MIN_WALLET_MAX_TX_VALUE: u16 = 1;
+pub const MIN_WALLET_OWNERS: u16 = 2;
+pub const MAX_WALLET_OWNERS: u16 = 16;
 pub const MAX_TRANSACTION_NOTES_LEN: u16 = 256;
 
 pub const MSG_NOT_ENOUGH_OWNERS: &str = "There can not be less owners than allowed";
@@ -52,8 +52,8 @@ pub struct Wallet<T: Trait> {
 	pub max_tx_value: BalanceOf<T>,
 	pub confirms_required: u16,
 
-	pub pending_tx_count: u32,
-	pub executed_tx_count:u64,
+	pub pending_tx_count: u16,
+	pub executed_tx_count: u64,
 }
 
 #[cfg_attr(feature = "std", derive(Debug))]
@@ -76,9 +76,9 @@ pub trait Trait: system::Trait + timestamp::Trait + GovernanceCurrency + MaybeDe
 
 decl_storage! {
 	trait Store for Module<T: Trait> as MultisigWalletModule {
-		MinMultisigWalletMaxTxValue get(min_multisig_wallet_max_tx_value): u16 = MIN_MULTISIG_WALLET_MAX_TX_VALUE;
-		MinMultisigWalletOwners get(min_multisig_wallet_owners): u16 = MIN_MULTISIG_WALLET_OWNERS;
-		MaxMultisigWalletOwners get(max_multisig_wallet_owners): u16 = MAX_MULTISIG_WALLET_OWNERS;
+		MinMultisigWalletMaxTxValue get(min_wallet_max_tx_value): u16 = MIN_WALLET_MAX_TX_VALUE;
+		MinMultisigWalletOwners get(min_wallet_owners): u16 = MIN_WALLET_OWNERS;
+		MaxMultisigWalletOwners get(max_wallet_owners): u16 = MAX_WALLET_OWNERS;
 		MaxTransactionNotesLen get(max_transaction_notes_len): u16 = MAX_TRANSACTION_NOTES_LEN;
 
 		WalletById get(wallet_by_id): map T::AccountId => Option<Wallet<T>>;
@@ -110,12 +110,12 @@ decl_module! {
 			}
 
 			let owners_count = wallet_owners.len() as u16;
-			ensure!(owners_count >= MIN_MULTISIG_WALLET_OWNERS, MSG_NOT_ENOUGH_OWNERS);
-			ensure!(owners_count <= MAX_MULTISIG_WALLET_OWNERS, MSG_TOO_MANY_OWNERS);
+			ensure!(owners_count >= MIN_WALLET_OWNERS, MSG_NOT_ENOUGH_OWNERS);
+			ensure!(owners_count <= MAX_WALLET_OWNERS, MSG_TOO_MANY_OWNERS);
 
 			ensure!(confirms_required <= owners_count, MSG_MORE_CONFIRMS_REQUIRED_THAN_OWNERS);
 			ensure!(confirms_required > 0, MSG_CANNOT_REQUIRE_ZERO_CONFIRMS);
-			ensure!(max_tx_value >= BalanceOf::<T>::sa(MIN_MULTISIG_WALLET_MAX_TX_VALUE as u64), MSG_MAX_TX_VALUE_LOWER_THAN_ALLOWED);
+			ensure!(max_tx_value >= BalanceOf::<T>::sa(MIN_WALLET_MAX_TX_VALUE as u64), MSG_MAX_TX_VALUE_LOWER_THAN_ALLOWED);
 
 			// let public_key: sr25519::Public = sr25519::Pair::generate().public();
 			// let wallet_id: T::AccountId = public_key.using_encoded(Decode::decode).expect("panic!");

@@ -123,7 +123,7 @@ fn create_wallet_should_fail_empty_owners() {
 #[test]
 fn create_wallet_should_fail_too_many_owners() {
   with_externalities(&mut test_ext(), || {
-    let accounts : Vec<u64> = (1..MAX_MULTISIG_WALLET_OWNERS as u64 + 2).collect();
+    let accounts : Vec<u64> = (1..MAX_WALLET_OWNERS as u64 + 2).collect();
 
     assert_noop!(_create_wallet(None, None, Some(accounts), None, None), MSG_TOO_MANY_OWNERS);
   });
