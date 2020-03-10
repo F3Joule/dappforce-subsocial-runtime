@@ -19,9 +19,6 @@ pub trait Trait: system::Trait + timestamp::Trait + MaybeDebug {
   type PostId: Parameter + Member + SimpleArithmetic + Codec + Default + Copy
     + As<usize> + As<u64> + MaybeSerializeDebug + PartialEq;
 
-  type CommentId: Parameter + Member + SimpleArithmetic + Codec + Default + Copy
-    + As<usize> + As<u64> + MaybeSerializeDebug + PartialEq;
-
   type ReactionId: Parameter + Member + SimpleArithmetic + Codec + Default + Copy
     + As<usize> + As<u64> + MaybeSerializeDebug + PartialEq;
 }
@@ -92,22 +89,20 @@ pub struct SpaceHistoryRecord<T: Trait> {
 #[derive(Clone, Encode, Decode, PartialEq)]
 pub struct Post<T: Trait> {
   pub id: T::PostId,
-  pub space_id: T::SpaceId,
   pub created: Change<T>,
   pub updated: Option<Change<T>>,
   pub hidden: bool,
+  
+  pub space_id: Option<T::SpaceId>,
   pub extension: PostExtension<T>,
 
-  // Next fields can be updated by the owner only:
-
   pub ipfs_hash: Vec<u8>,
+  pub edit_history: Vec<PostHistoryRecord<T>>,
 
-  pub comments_count: u16,
+  pub total_replies_count: u16,
+  pub shares_count: u16,
   pub upvotes_count: u16,
   pub downvotes_count: u16,
-  pub shares_count: u16,
-
-  pub edit_history: Vec<PostHistoryRecord<T>>,
 
   pub score: i32,
 }
@@ -128,54 +123,24 @@ pub struct PostHistoryRecord<T: Trait> {
 }
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize, Debug))]
-#[derive(Clone, Copy, Encode, Decode, PartialEq, Eq)]
+#[derive(Clone, Encode, Decode, PartialEq, Eq)]
 pub enum PostExtension<T: Trait> {
     RegularPost,
+    Comment(CommentExt<T>),
     SharedPost(T::PostId),
-    SharedComment(T::CommentId),
+}
+
+#[cfg_attr(feature = "std", derive(Serialize, Deserialize, Debug))]
+#[derive(Clone, Encode, Decode, PartialEq, Eq)]
+pub struct CommentExt<T: Trait> {
+  parent_id: Option<T::PostId>,
+  root_post_id: T::PostId,
 }
 
 impl <T: Trait> Default for PostExtension<T> {
     fn default() -> Self {
         PostExtension::RegularPost
     }
-}
-
-#[cfg_attr(feature = "std", derive(Debug))]
-#[derive(Clone, Encode, Decode, PartialEq)]
-pub struct Comment<T: Trait> {
-  pub id: T::CommentId,
-  pub parent_id: Option<T::CommentId>,
-  pub post_id: T::PostId,
-  pub created: Change<T>,
-  pub updated: Option<Change<T>>,
-  pub hidden: bool,
-
-  // Can be updated by the owner:
-  pub ipfs_hash: Vec<u8>,
-
-  pub upvotes_count: u16,
-  pub downvotes_count: u16,
-  pub shares_count: u16,
-  pub direct_replies_count: u16,
-
-  pub edit_history: Vec<CommentHistoryRecord<T>>,
-
-  pub score: i32,
-}
-
-#[cfg_attr(feature = "std", derive(Debug))]
-#[derive(Clone, Encode, Decode, PartialEq)]
-pub struct CommentUpdate {
-  pub ipfs_hash: Option<Vec<u8>>,
-  pub hidden: Option<bool>,
-}
-
-#[cfg_attr(feature = "std", derive(Debug))]
-#[derive(Clone, Encode, Decode, PartialEq)]
-pub struct CommentHistoryRecord<T: Trait> {
-  pub edited: Change<T>,
-  pub old_data: CommentUpdate,
 }
 
 #[cfg_attr(feature = "std", derive(Serialize, Deserialize, Debug))]
@@ -246,16 +211,14 @@ decl_storage! {
 
     pub SpaceById get(space_by_id): map T::SpaceId => Option<Space<T>>;
     pub PostById get(post_by_id): map T::PostId => Option<Post<T>>;
-    pub CommentById get(comment_by_id): map T::CommentId => Option<Comment<T>>;
     pub ReactionById get(reaction_by_id): map T::ReactionId => Option<Reaction<T>>;
 
     pub PostIdsBySpaceId get(post_ids_by_space_id): map T::SpaceId => Vec<T::PostId>;
-    pub CommentIdsByPostId get(comment_ids_by_post_id): map T::PostId => Vec<T::CommentId>;
+    pub CommentIdsByPostId get(comment_ids_by_post_id): map T::PostId => Vec<T::PostId>;
 
     pub ReactionIdsByPostId get(reaction_ids_by_post_id): map T::PostId => Vec<T::ReactionId>;
-    pub ReactionIdsByCommentId get(reaction_ids_by_comment_id): map T::CommentId => Vec<T::ReactionId>;
+    pub ReactionIdsByCommentId get(reaction_ids_by_comment_id): map T::PostId => Vec<T::ReactionId>;
     pub PostReactionIdByAccount get(post_reaction_id_by_account): map (SpacedAccount<T>, T::PostId) => T::ReactionId;
-    pub CommentReactionIdByAccount get(comment_reaction_id_by_account): map (SpacedAccount<T>, T::CommentId) => T::ReactionId;
 
     pub SpaceIdByHandle get(space_id_by_handle): map Vec<u8> => Option<T::SpaceId>;
     pub SpaceIdsByOwner get(space_ids_by_owner): map T::AccountId => Vec<T::SpaceId>;
@@ -266,7 +229,6 @@ decl_storage! {
 
     pub NextSpaceId get(next_space_id): T::SpaceId = T::SpaceId::sa(1);
     pub NextPostId get(next_post_id): T::PostId = T::PostId::sa(1);
-    pub NextCommentId get(next_comment_id): T::CommentId = T::CommentId::sa(1);
     pub NextReactionId get(next_reaction_id): T::ReactionId = T::ReactionId::sa(1);
 
     // pub AccountReputationDiffByAccount get(account_reputation_diff_by_account): map (T::AccountId, T::AccountId, ScoringAction) => Option<i16>; // TODO shorten name (?refactor)
@@ -276,8 +238,8 @@ decl_storage! {
     pub PostSharesByAccount get(post_shares_by_account): map (T::AccountId, T::PostId) => u16;
     pub SharedPostIdsByOriginalPostId get(shared_post_ids_by_original_post_id): map T::PostId => Vec<T::PostId>;
 
-    pub CommentSharesByAccount get(comment_shares_by_account): map (T::AccountId, T::CommentId) => u16;
-    pub SharedPostIdsByOriginalCommentId get(shared_post_ids_by_original_comment_id): map T::CommentId => Vec<T::PostId>;
+    pub CommentSharesByAccount get(comment_shares_by_account): map (T::AccountId, T::PostId) => u16;
+    pub SharedPostIdsByOriginalCommentId get(shared_post_ids_by_original_comment_id): map T::PostId => Vec<T::PostId>;
   }
 }
 
@@ -286,7 +248,6 @@ decl_event! {
     SpacedAccount = SpacedAccount<T>,
     <T as Trait>::SpaceId,
     <T as Trait>::PostId,
-    <T as Trait>::CommentId,
     <T as Trait>::ReactionId
   {
     SpaceCreated(SpacedAccount, SpaceId),
@@ -303,18 +264,18 @@ decl_event! {
     PostDeleted(SpacedAccount, PostId),
     PostShared(SpacedAccount, PostId),
 
-    CommentCreated(SpacedAccount, CommentId),
-    CommentUpdated(SpacedAccount, CommentId),
-    CommentDeleted(SpacedAccount, CommentId),
-    CommentShared(SpacedAccount, CommentId),
+    CommentCreated(SpacedAccount, PostId),
+    CommentUpdated(SpacedAccount, PostId),
+    CommentDeleted(SpacedAccount, PostId),
+    CommentShared(SpacedAccount, PostId),
 
     PostReactionCreated(SpacedAccount, PostId, ReactionId),
     PostReactionUpdated(SpacedAccount, PostId, ReactionId),
     PostReactionDeleted(SpacedAccount, PostId, ReactionId),
 
-    CommentReactionCreated(SpacedAccount, CommentId, ReactionId),
-    CommentReactionUpdated(SpacedAccount, CommentId, ReactionId),
-    CommentReactionDeleted(SpacedAccount, CommentId, ReactionId),
+    CommentReactionCreated(SpacedAccount, PostId, ReactionId),
+    CommentReactionUpdated(SpacedAccount, PostId, ReactionId),
+    CommentReactionDeleted(SpacedAccount, PostId, ReactionId),
   }
 }
 
@@ -332,12 +293,12 @@ decl_module! {
     }
 
     // TODO use SpaceUpdate to pass data
-    pub fn create_space(origin, on_behalf: Option<T::SpaceId>, handle: Vec<u8>, ipfs_hash: Option<Vec<u8>>) {
+    pub fn create_space(origin, on_behalf: Option<T::SpaceId>, handle: Vec<u8>, ipfs_hash_opt: Option<Vec<u8>>) {
       let owner = ensure_signed(origin)?;
 
       Self::is_space_handle_valid(handle.clone())?;
-      if let Some(ipfs_hash_unwrapped) = ipfs_hash.clone() {
-        Self::is_ipfs_hash_valid(ipfs_hash_unwrapped)?;
+      if let Some(ipfs_hash) = ipfs_hash_opt.clone() {
+        Self::is_ipfs_hash_valid(ipfs_hash)?;
       }
 
       let space_id = Self::next_space_id();
@@ -350,7 +311,7 @@ decl_module! {
         hidden: false,
         // owners: vec![],
         handle: handle.clone(),
-        ipfs_hash,
+        ipfs_hash: ipfs_hash_opt,
         edit_history: vec![],
         followers_count: 0,
         following_count: 0,
@@ -361,7 +322,7 @@ decl_module! {
       // Space creator automatically follows their space:
       Self::add_space_follower_and_insert_space(spaced_account, new_space, true)?;
 
-      <SpaceIdsByOwner<T>>::mutate(owner.clone(), |ids| ids.push(space_id));
+      <SpaceIdsByOwner<T>>::mutate(owner, |ids| ids.push(space_id));
       <SpaceIdByHandle<T>>::insert(handle, space_id);
       <NextSpaceId<T>>::mutate(|n| { *n += T::SpaceId::sa(1); });
     }
@@ -369,10 +330,10 @@ decl_module! {
     pub fn follow_space(origin, on_behalf: T::SpaceId, space_id: T::SpaceId) {
       let follower = ensure_signed(origin)?;
 
-      let ref mut space = Self::space_by_id(space_id).ok_or(MSG_SPACE_NOT_FOUND)?;
+      let space = &mut Self::space_by_id(space_id).ok_or(MSG_SPACE_NOT_FOUND)?;
       ensure!(!Self::space_followed_by_space((on_behalf, space_id)), MSG_ACCOUNT_IS_FOLLOWING_SPACE);
 
-      Self::add_space_follower_and_insert_space(Self::new_spaced_account(follower.clone(), Some(on_behalf))?, space, false)?;
+      Self::add_space_follower_and_insert_space(Self::new_spaced_account(follower, Some(on_behalf))?, space, false)?;
     }
 
     pub fn unfollow_space(origin, on_behalf: T::SpaceId, space_id: T::SpaceId) {
@@ -407,97 +368,65 @@ decl_module! {
     }
 
     // TODO use PostUpdate to pass data?
-    pub fn create_post(origin, on_behalf: Option<T::SpaceId>, space_id: T::SpaceId, ipfs_hash: Vec<u8>, extension: PostExtension<T>) {
+    pub fn create_post(origin, on_behalf: Option<T::SpaceId>, space_id_opt: Option<T::SpaceId>, ipfs_hash: Vec<u8>, extension: PostExtension<T>) {
       let owner = ensure_signed(origin)?;
 
-      let mut space = Self::space_by_id(space_id).ok_or(MSG_SPACE_NOT_FOUND)?;
-      Self::ensure_account_is_space_owner(owner.clone(), space_id)?;
-
       let new_post_id = Self::next_post_id();
+      let mut is_comment = None;
+      let mut root_post;
 
       // Sharing functions contain check for post/comment existance
-      match extension {
+      match extension.clone() {
         PostExtension::RegularPost => {
           Self::is_ipfs_hash_valid(ipfs_hash.clone())?;
         },
-        PostExtension::SharedPost(post_id) => {
-          let post = Self::post_by_id(post_id).ok_or(MSG_ORIGINAL_POST_NOT_FOUND)?;
-          ensure!(post.extension == PostExtension::RegularPost, MSG_CANNOT_SHARE_SHARED_POST);
-          Self::share_post(owner.clone(), on_behalf, post_id, new_post_id)?;
+        PostExtension::Comment(comment_ext) => {
+          root_post = Self::post_by_id(comment_ext.root_post_id).ok_or(MSG_POST_NOT_FOUND)?;
+          root_post.total_replies_count = root_post.total_replies_count.checked_add(1).ok_or(MSG_OVERFLOW_ADDING_COMMENT_ON_POST)?;
+
+          // Self::change_post_score(owner.clone(), post, ScoringAction::CreateComment)?;
+
+          is_comment = Some(comment_ext);
         },
-        PostExtension::SharedComment(comment_id) => {
-          Self::share_comment(owner.clone(), on_behalf, comment_id, new_post_id)?;
+        PostExtension::SharedPost(post_id) => {
+          ensure!(<PostById<T>>::exists(post_id), MSG_ORIGINAL_POST_NOT_FOUND);
+          Self::share_post(owner.clone(), on_behalf, post_id, new_post_id)?;
         },
       }
 
       let spaced_account = Self::new_spaced_account(owner.clone(), on_behalf)?;
       let new_post: Post<T> = Post {
         id: new_post_id,
-        space_id,
         created: Self::new_change(spaced_account.clone()),
         updated: None,
+        hidden: false,
+        space_id: space_id_opt,
         extension,
-        hidden: false,
         ipfs_hash,
-        comments_count: 0,
+        edit_history: vec![],
+        total_replies_count: 0,
+        shares_count: 0,
         upvotes_count: 0,
         downvotes_count: 0,
-        shares_count: 0,
-        edit_history: vec![],
         score: 0,
       };
 
-      space.posts_count = space.posts_count.checked_add(1).ok_or(MSG_OVERFLOW_ADDING_POST_ON_SPACE)?;
-      
-      <PostById<T>>::insert(new_post_id, new_post);
-      <PostIdsBySpaceId<T>>::mutate(space_id, |ids| ids.push(new_post_id));
-      <NextPostId<T>>::mutate(|n| { *n += T::PostId::sa(1); });
-      <SpaceById<T>>::insert(space_id, space);
-
-      Self::deposit_event(RawEvent::PostCreated(spaced_account, new_post_id));
-    }
-
-    // TODO use CommentUpdate to pass data?
-    pub fn create_comment(origin, on_behalf: Option<T::SpaceId>, post_id: T::PostId, parent_id: Option<T::CommentId>, ipfs_hash: Vec<u8>) {
-      let owner = ensure_signed(origin)?;
-
-      let ref mut post = Self::post_by_id(post_id).ok_or(MSG_POST_NOT_FOUND)?;
-      let spaced_account = Self::new_spaced_account(owner.clone(), on_behalf)?;
-      Self::is_ipfs_hash_valid(ipfs_hash.clone())?;
-
-      let comment_id = Self::next_comment_id();
-      let new_comment: Comment<T> = Comment {
-        id: comment_id,
-        parent_id,
-        post_id,
-        created: Self::new_change(spaced_account.clone()),
-        updated: None,
-        hidden: false,
-        ipfs_hash,
-        upvotes_count: 0,
-        downvotes_count: 0,
-        shares_count: 0,
-        direct_replies_count: 0,
-        edit_history: vec![],
-        score: 0,
-      };
-
-      post.comments_count = post.comments_count.checked_add(1).ok_or(MSG_OVERFLOW_ADDING_COMMENT_ON_POST)?;
-
-      // Self::change_post_score(owner.clone(), post, ScoringAction::CreateComment)?;
-
-      if let Some(id) = parent_id {
-        let mut parent_comment = Self::comment_by_id(id).ok_or(MSG_UNKNOWN_PARENT_COMMENT)?;
-        parent_comment.direct_replies_count = parent_comment.direct_replies_count.checked_add(1).ok_or(MSG_OVERFLOW_REPLYING_ON_COMMENT)?;
-        <CommentById<T>>::insert(id, parent_comment);
+      if let Some(space_id) = space_id_opt {
+        let mut space = Self::space_by_id(space_id).ok_or(MSG_SPACE_NOT_FOUND)?;
+        Self::ensure_account_is_space_owner(owner.clone(), space_id)?;
+        space.posts_count = space.posts_count.checked_add(1).ok_or(MSG_OVERFLOW_ADDING_POST_ON_SPACE)?;
+        <PostIdsBySpaceId<T>>::mutate(space_id, |ids| ids.push(new_post_id));
+        <SpaceById<T>>::insert(space_id, space);
       }
 
-      <CommentById<T>>::insert(comment_id, new_comment);
-      <CommentIdsByPostId<T>>::mutate(post_id, |ids| ids.push(comment_id));
-      <NextCommentId<T>>::mutate(|n| { *n += T::CommentId::sa(1); });
-      <PostById<T>>::insert(post_id, post);
+      if let Some(comment_ext) = is_comment {
+        <CommentIdsByPostId<T>>::mutate(comment_ext.root_post_id, |ids| ids.push(new_post_id));
+      }
+      
+      <PostById<T>>::insert(new_post_id, new_post);
+      <NextPostId<T>>::mutate(|n| { *n += T::PostId::sa(1); });
 
-      Self::deposit_event(RawEvent::CommentCreated(spaced_account, comment_id));
+      Self::deposit_event(RawEvent::PostCreated(spaced_account, new_post_id));
     }
 
     pub fn create_post_reaction(origin, on_behalf: Option<T::SpaceId>, post_id: T::PostId, kind: ReactionKind) {
@@ -528,49 +457,20 @@ decl_module! {
       //   Self::change_post_score(owner.clone(), post, action)?;
       // }
       // else {
-      <PostById<T>>::insert(post_id, post);
+      <PostById<T>>::insert(post_id, post.clone());
       // }
 
       <ReactionIdsByPostId<T>>::mutate(post_id, |ids| ids.push(reaction_id));
       <PostReactionIdByAccount<T>>::insert((spaced_account.clone(), post_id), reaction_id);
 
-      Self::deposit_event(RawEvent::PostReactionCreated(spaced_account, post_id, reaction_id));
-    }
-
-    pub fn create_comment_reaction(origin, on_behalf: Option<T::SpaceId>, comment_id: T::CommentId, kind: ReactionKind) {
-      let owner = ensure_signed(origin)?;
-
-      let spaced_account = Self::new_spaced_account(owner.clone(), on_behalf)?;
-      ensure!(
-        !<CommentReactionIdByAccount<T>>::exists((spaced_account.clone(), comment_id)),
-        MSG_ACCOUNT_ALREADY_REACTED_TO_COMMENT
-      );
-
-      let ref mut comment = Self::comment_by_id(comment_id).ok_or(MSG_COMMENT_NOT_FOUND)?;
-      let reaction_id = Self::new_reaction(spaced_account.clone(), kind.clone());
-      // let action: ScoringAction;
-
-      match kind {
-        ReactionKind::Upvote => {
-          comment.upvotes_count = comment.upvotes_count.checked_add(1).ok_or(MSG_OVERFLOW_UPVOTING_COMMENT)?;
-          // action = ScoringAction::UpvoteComment;
+      match post.extension {
+        PostExtension::RegularPost | PostExtension::SharedPost(_) => {
+          Self::deposit_event(RawEvent::PostReactionCreated(spaced_account, post_id, reaction_id));
         },
-        ReactionKind::Downvote => {
-          comment.downvotes_count = comment.downvotes_count.checked_add(1).ok_or(MSG_OVERFLOW_DOWNVOTING_COMMENT)?;
-          // action = ScoringAction::DownvoteComment;
+        PostExtension::Comment(_) => {
+          Self::deposit_event(RawEvent::CommentReactionCreated(spaced_account, post_id, reaction_id));
         },
       }
-      // if comment.created.account != owner {
-      //   Self::change_comment_score(owner.clone(), comment, action)?;
-      // }
-      // else {
-      <CommentById<T>>::insert(comment_id, comment);
-      // }
-
-      <ReactionIdsByCommentId<T>>::mutate(comment_id, |ids| ids.push(reaction_id));
-      <CommentReactionIdByAccount<T>>::insert((spaced_account.clone(), comment_id), reaction_id);
-
-      Self::deposit_event(RawEvent::CommentReactionCreated(spaced_account, comment_id, reaction_id));
     }
 
     pub fn update_space(origin, on_behalf: Option<T::SpaceId>, space_id: T::SpaceId, update: SpaceUpdate) {
@@ -687,16 +587,18 @@ decl_module! {
 
       // Move this post to another space:
       if let Some(space_id) = update.space_id {
-        if space_id != post.space_id {
+        if Some(space_id) != post.space_id {
           Self::ensure_space_exists(space_id)?;
           
           // Remove post_id from its old space:
-          <PostIdsBySpaceId<T>>::mutate(post.space_id, |post_ids| Self::vec_remove_on(post_ids, post_id));
+          if let Some(old_space_id) = post.space_id {
+            <PostIdsBySpaceId<T>>::mutate(old_space_id, |post_ids| Self::vec_remove_on(post_ids, post_id));
+          }
           
           // Add post_id to its new space:
           <PostIdsBySpaceId<T>>::mutate(space_id.clone(), |ids| ids.push(post_id));
-          new_history_record.old_data.space_id = Some(post.space_id);
-          post.space_id = space_id;
+          new_history_record.old_data.space_id = post.space_id;
+          post.space_id = Some(space_id);
           fields_updated += 1;
         }
       }
@@ -705,56 +607,16 @@ decl_module! {
       if fields_updated > 0 {
         post.updated = Some(Self::new_change(spaced_account.clone()));
         post.edit_history.push(new_history_record);
-        <PostById<T>>::insert(post_id, post);
+        <PostById<T>>::insert(post_id, post.clone());
 
-        Self::deposit_event(RawEvent::PostUpdated(spaced_account, post_id));
-      }
-    }
-    
-    pub fn update_comment(origin, on_behalf: Option<T::SpaceId>, comment_id: T::CommentId, update: CommentUpdate) {
-      let owner = ensure_signed(origin)?;
-
-      let spaced_account = Self::new_spaced_account(owner.clone(), on_behalf)?;
-      let has_updates = 
-        update.ipfs_hash.is_some() ||
-        update.hidden.is_some();
-      
-      ensure!(has_updates, MSG_NOTHING_TO_UPDATE_IN_COMMENT);
-
-      let mut comment = Self::comment_by_id(comment_id).ok_or(MSG_COMMENT_NOT_FOUND)?;
-
-      // TODO: Make is_owner in impl
-      ensure!(owner.clone() == comment.created.on_behalf.account, MSG_ONLY_COMMENT_AUTHOR_CAN_UPDATE_COMMENT);
-
-      let mut fields_updated = 0;
-      let mut new_history_record = CommentHistoryRecord {
-        edited: Self::new_change(spaced_account.clone()),
-        old_data: CommentUpdate {ipfs_hash: None, hidden: None}
-      };
-
-      if let Some(ipfs_hash) = update.ipfs_hash {
-        if ipfs_hash != comment.ipfs_hash {
-          Self::is_ipfs_hash_valid(ipfs_hash.clone())?;
-          new_history_record.old_data.ipfs_hash = Some(comment.ipfs_hash);
-          comment.ipfs_hash = ipfs_hash;
-          fields_updated += 1;
+        match post.extension {
+          PostExtension::RegularPost | PostExtension::SharedPost(_) => {
+            Self::deposit_event(RawEvent::PostUpdated(spaced_account, post_id));
+          },
+          PostExtension::Comment(_) => {
+            Self::deposit_event(RawEvent::CommentUpdated(spaced_account, post_id));
+          },
         }
-      }
-
-      if let Some(hidden) = update.hidden {
-        if hidden != comment.hidden {
-          new_history_record.old_data.hidden = Some(comment.hidden);
-          comment.hidden = hidden;
-          fields_updated += 1;
-        }
-      }
-
-      if fields_updated > 0 {
-        comment.updated = Some(Self::new_change(spaced_account.clone()));
-        comment.edit_history.push(new_history_record);
-        <CommentById<T>>::insert(comment_id, comment);
-
-        Self::deposit_event(RawEvent::CommentUpdated(spaced_account, comment_id));
       }
     }
 
@@ -796,52 +658,16 @@ decl_module! {
       // Self::change_post_score(owner.clone(), post, action)?;
 
       <ReactionById<T>>::insert(reaction_id, reaction);
-      <PostById<T>>::insert(post_id, post);
+      <PostById<T>>::insert(post_id, post.clone());
 
-      Self::deposit_event(RawEvent::PostReactionUpdated(spaced_account, post_id, reaction_id));
-    }
-
-    pub fn update_comment_reaction(origin, on_behalf: Option<T::SpaceId>, comment_id: T::CommentId, reaction_id: T::ReactionId, new_kind: ReactionKind) {
-      let owner = ensure_signed(origin)?;
-
-      let spaced_account = Self::new_spaced_account(owner.clone(), on_behalf)?;
-      ensure!(
-        <CommentReactionIdByAccount<T>>::exists((spaced_account.clone(), comment_id)),
-        MSG_ACCOUNT_HAS_NOT_REACTED_TO_COMMENT
-      );
-
-      let mut reaction = Self::reaction_by_id(reaction_id).ok_or(MSG_REACTION_NOT_FOUND)?;
-      let ref mut comment = Self::comment_by_id(comment_id).ok_or(MSG_COMMENT_NOT_FOUND)?;
-
-      ensure!(spaced_account == reaction.created.on_behalf, MSG_ONLY_REACTION_OWNER_CAN_UPDATE_REACTION);
-      ensure!(reaction.kind != new_kind, MSG_NEW_REACTION_KIND_DO_NOT_DIFFER);
-
-      reaction.kind = new_kind;
-      reaction.updated = Some(Self::new_change(spaced_account.clone()));
-      // let action: ScoringAction;
-      // let action_to_cancel: ScoringAction;
-      
-      match new_kind {
-        ReactionKind::Upvote => {
-          comment.upvotes_count += 1;
-          comment.downvotes_count -= 1;
-          // action_to_cancel = ScoringAction::DownvoteComment;
-          // action = ScoringAction::UpvoteComment;
+      match post.extension {
+        PostExtension::RegularPost | PostExtension::SharedPost(_) => {
+          Self::deposit_event(RawEvent::PostReactionUpdated(spaced_account, post_id, reaction_id));
         },
-        ReactionKind::Downvote => {
-          comment.downvotes_count += 1;
-          comment.upvotes_count -= 1;
-          // action_to_cancel = ScoringAction::UpvoteComment;
-          // action = ScoringAction::DownvoteComment;
+        PostExtension::Comment(_) => {
+          Self::deposit_event(RawEvent::CommentReactionUpdated(spaced_account, post_id, reaction_id));
         },
       }
-      // Self::change_comment_score(owner.clone(), comment, action_to_cancel)?;
-      // Self::change_comment_score(owner.clone(), comment, action)?;
-
-      <ReactionById<T>>::insert(reaction_id, reaction);
-      <CommentById<T>>::insert(comment_id, comment);
-
-      Self::deposit_event(RawEvent::CommentReactionUpdated(spaced_account, comment_id, reaction_id));
     }
 
     // TODO fn delete_space(origin, space_id: T::SpaceId) {
@@ -881,47 +707,19 @@ decl_module! {
       }
       // Self::change_post_score(owner.clone(), post, action_to_cancel)?;
 
-      <PostById<T>>::insert(post_id, post);
+      <PostById<T>>::insert(post_id, post.clone());
       <ReactionById<T>>::remove(reaction_id);
       <ReactionIdsByPostId<T>>::mutate(post_id, |ids| Self::vec_remove_on(ids, reaction_id));
       <PostReactionIdByAccount<T>>::remove((spaced_account.clone(), post_id));
 
-      Self::deposit_event(RawEvent::PostReactionDeleted(spaced_account, post_id, reaction_id));
-    }
-
-    pub fn delete_comment_reaction(origin, on_behalf: Option<T::SpaceId>, comment_id: T::CommentId, reaction_id: T::ReactionId) {
-      let owner = ensure_signed(origin)?;
-
-      let spaced_account = Self::new_spaced_account(owner.clone(), on_behalf)?;
-      ensure!(
-        <CommentReactionIdByAccount<T>>::exists((spaced_account.clone(), comment_id)),
-        MSG_NO_COMMENT_REACTION_BY_ACCOUNT_TO_DELETE
-      );
-      
-      // let action_to_cancel: ScoringAction;
-      let reaction = Self::reaction_by_id(reaction_id).ok_or(MSG_REACTION_NOT_FOUND)?;
-      let ref mut comment = Self::comment_by_id(comment_id).ok_or(MSG_COMMENT_NOT_FOUND)?;
-      
-      ensure!(spaced_account == reaction.created.on_behalf, MSG_ONLY_REACTION_OWNER_CAN_UPDATE_REACTION);
-
-      match reaction.kind {
-        ReactionKind::Upvote => {
-          comment.upvotes_count -= 1;
-          // action_to_cancel = ScoringAction::UpvoteComment
+      match post.extension {
+        PostExtension::RegularPost | PostExtension::SharedPost(_) => {
+          Self::deposit_event(RawEvent::PostReactionDeleted(spaced_account, post_id, reaction_id));
         },
-        ReactionKind::Downvote => {
-          comment.downvotes_count -= 1;
-          // action_to_cancel = ScoringAction::DownvoteComment
+        PostExtension::Comment(_) => {
+          Self::deposit_event(RawEvent::CommentReactionDeleted(spaced_account, post_id, reaction_id));
         },
       }
-      // Self::change_comment_score(owner.clone(), comment, action_to_cancel)?;
-
-      <CommentById<T>>::insert(comment_id, comment);
-      <ReactionIdsByCommentId<T>>::mutate(comment_id, |ids| Self::vec_remove_on(ids, reaction_id));
-      <ReactionById<T>>::remove(reaction_id);
-      <CommentReactionIdByAccount<T>>::remove((spaced_account.clone(), comment_id));
-
-      Self::deposit_event(RawEvent::CommentReactionDeleted(spaced_account, comment_id, reaction_id));
     }
 
     // TODO spend some tokens on: create/update a space/post/comment.

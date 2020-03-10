@@ -18,7 +18,6 @@ pub const MSG_NOTHING_TO_UPDATE_IN_COMMENT: &str = "Nothing to update in comment
 pub const MSG_UNKNOWN_PARENT_COMMENT: &str = "Unknown parent comment id";
 pub const MSG_ONLY_COMMENT_AUTHOR_CAN_UPDATE_COMMENT: &str = "Only comment author can update their comment";
 pub const MSG_OVERFLOW_ADDING_COMMENT_ON_POST: &str = "Overflow adding comment on post";
-pub const MSG_OVERFLOW_REPLYING_ON_COMMENT: &str = "Overflow replying on comment";
 
 pub const MSG_REACTION_NOT_FOUND: &str = "Reaction was not found by id";
 pub const MSG_ACCOUNT_ALREADY_REACTED_TO_POST: &str = "Account has already reacted to this post. To change a kind of reaction call update_post_reaction()";

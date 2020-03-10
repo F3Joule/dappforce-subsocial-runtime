@@ -231,7 +231,6 @@ impl spaces::Trait for Runtime {
     type Event = Event;
     type SpaceId = u64;
     type PostId = u64;
-    type CommentId = u64;
     type ReactionId = u64;
 }
 
